@@ -6,6 +6,7 @@
 #include <iostream>
 #include <stdio.h>
 #include <stdlib.h>
+#include <list>
 
 #include "opencv2/calib3d.hpp"
 #include "opencv2/xfeatures2d.hpp"
@@ -23,14 +24,15 @@ Scalar colorTab[] =
 	Scalar(0,255,0),
 	Scalar(255,100,100),
 	Scalar(255,0,255),
-	Scalar(0,255,255)
+	Scalar(0,255,255),
+	Scalar(0,0,0)
 };
 
-vector<Point2f> mCorners;
-vector<Point2f> mEdges;
+vector<Point2i> mCorners;
+vector<Point2i> mEdges;
 
-int min_thresh = 75;
-int max_thresh = 140;
+int min_thresh = 60;
+int max_thresh = 255;
 int row, col;
 RNG rng(12345);
 
@@ -39,7 +41,7 @@ void select4Corner(const Mat& img);
 void otoCornerDetect(const Mat& src);
 /**************/
 static void onMouse(int event, int x, int y, int, void*);
-Point2f roi4point[4];
+Point2i roi4point[4];
 int roiIndex = 0;
 bool oksign = false;
 
@@ -48,9 +50,14 @@ bool oksign = false;
 void otoCornerDetect(const Mat& src);
 void checkPoint(int a, int b);
 void select4Corner(const Mat& img);
-void PointOrderbyConner(Point2f* inPoints, int w, int h);
+void PointOrderbyConner(Point2i* inPoints, int w, int h);
 static void onMouse(int event, int x, int y, int, void*);
+Mat divideAndProject(const Mat img, vector<Point> contour, vector<Point2i> vertices, const int r, const int c);
 
+
+vector<Point> DouglasPeucker(vector<Point> &points, double epsilon);
+double distance_to_Line(cv::Point line_start, cv::Point line_end, cv::Point point);
+list<Point> DouglasPeuckerWrapper(vector<Point> &points, vector<Point>::iterator it1, vector<Point>::iterator it2, double epsilon);
 
 
 Mat p2d_interpolateM(Mat Image, Mat P, int Method);

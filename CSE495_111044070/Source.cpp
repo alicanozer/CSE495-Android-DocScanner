@@ -1,12 +1,32 @@
 #ifndef _HEADER_
 #include "Header.h"
+#include <fstream>
+#include <time.h> // to calculate time needed
+#define MAX_HEIGHT 1080 //max height of input image
+#define AUTO_CORNER_DETECTION 1
+#define DIV_IMG 36
 
+void drawPoly(Mat img, vector<Point> vp) {
+	if (vp.size() != 4) {
+		cout << "drawPoly error\n";
+		return;
+	}
+	line(img, vp[0], vp[1], Scalar(0, 0, 0));
+	line(img, vp[1], vp[2], Scalar(0, 0, 0));
+	line(img, vp[2], vp[3], Scalar(0, 0, 0));
+	line(img, vp[3], vp[0], Scalar(0, 0, 0));
+}
+void drawPoly(Mat img, Point lt, Point rt, Point rb, Point lb) {
 
-
-
+	line(img, lt, rt, Scalar(0, 0, 0));
+	line(img, rt, rb, Scalar(0, 0, 0));
+	line(img, rb, lb, Scalar(0, 0, 0));
+	line(img, lb, lt, Scalar(0, 0, 0));
+}
+vector<Point> fillPoints(vector<Point> src);
 int main(int argc, char** argv){
 
-	Mat src = imread("media/scan5.jpg");
+	Mat src = imread("C:/Users/Can/Desktop/Data/img_0184.jpg");//19
 	if (!src.data) {
 		cout << "no input image\n";
 		return 0;
@@ -14,10 +34,10 @@ int main(int argc, char** argv){
 	row = src.rows;
 	col = src.cols;
 	cout << "cols:" << src.cols << " rows:" << src.rows << endl;
-	if (src.rows > 1080)
+	if (src.rows > MAX_HEIGHT)
 	{
-		row = 1080;
-		col = 1080 * src.cols / src.rows;
+		row = MAX_HEIGHT;
+		col = MAX_HEIGHT * src.cols / src.rows;
 		Size dsize = Size(round(col), round(row));
 		resize(src, src, dsize);
 	}
@@ -25,6 +45,17 @@ int main(int argc, char** argv){
 		row = src.rows;
 		col = src.cols;
 	}
+	int sayi = min(row, col);
+	int ebob=1;
+
+	for (int i = sayi; i > 0; i--){
+		if ((row % i) == 0 && (col % i) == 0){
+			ebob = i;
+			break;
+		}
+	}
+	cout << "ebob:" << ebob << endl;
+
 	/*
 	float dummy_query_data[8] = { 172, 287, 1031, 256, 1249, 773, 40, 873 };
 	Mat Vertices = cv::Mat(4, 2, CV_32FC1, dummy_query_data);
@@ -39,6 +70,9 @@ int main(int argc, char** argv){
 
 	if (AUTO_CORNER_DETECTION) {
 		otoCornerDetect(src);
+		//Mat result = divideAndProject(src, 1, 2);
+		//imshow("dividexx", result);
+		//waitKey();
 	}
 	else {
 		select4Corner(src);	
@@ -60,18 +94,18 @@ void otoCornerDetect(const Mat& src) {
 
 	/// Detect edges using canny	
 	Canny(src_blur, canny_output, min_thresh, min_thresh*2.0, 3);
-
+	
 	/// Find contours
 	findContours(canny_output, contours, noArray(), CV_RETR_LIST, CV_CHAIN_APPROX_SIMPLE, Point());
-
+	
 	/// Find surrounding contour
 	int max = 0;
-	int index = -1;
+	int biggest_index = -1;
 	for (int i = 0; i < contours.size(); i++) {
 		int temp = contourArea(contours[i], false);
 		if (temp > max) {
 			max = temp;
-			index = i;
+			biggest_index = i;
 		}
 	}
 
@@ -82,7 +116,7 @@ void otoCornerDetect(const Mat& src) {
 	{
 		for (int j = 0; j < src.cols; j++)
 		{
-			raw_dist.at<float>(i, j) = pointPolygonTest(contours[index], Point2f(j, i), true);
+			raw_dist.at<float>(i, j) = pointPolygonTest(contours[biggest_index], Point2f(j, i), true);
 		}
 	}
 
@@ -115,13 +149,13 @@ void otoCornerDetect(const Mat& src) {
 			}
 		}
 	}
-
+	
 	cout << "max area is " << max << endl;
 
 	//draw largest contour
-	drawContours(biggestContour, contours, index, Scalar(255), 2, 8, noArray(), INT_MAX, Point());
-	//Rect boundRect = boundingRect(contours[index]);
-
+	drawContours(biggestContour, contours, biggest_index, colorTab[5], 2, 8, noArray(), INT_MAX, Point());
+	//Rect boundRect = boundingRect(contours[biggest_index]);
+	
 	Mat dst, dst_norm, dst_norm_scaled;
 	cvtColor(nears, src_gray, CV_BGR2GRAY);
 
@@ -140,33 +174,32 @@ void otoCornerDetect(const Mat& src) {
 	for (int i = 0; i < dst_norm.rows; i++) {
 		for (int j = 0; j < dst_norm.cols; j++) {
 			if ((int)dst_norm.at<float>(i, j) > min_thresh*2.0) {
-				circle(biggestContour, Point(j, i), 10, colorTab[i % 5], 2, 8, 0);
+				//circle(biggestContour, Point(j, i), 10, colorTab[i % 5], 2, 8, 0);
 				//cout << "unchecked point of corner " << i << "_" << j << endl;
 				checkPoint(j, i);
 			}
 		}
 	}
 	//select4Corner(biggestContour);
+
 	for (int i = 0; i < mCorners.size(); i++) {
-		circle(biggestContour, mCorners[i], 20, colorTab[0], 2, 8, 0);
+		circle(biggestContour, mCorners[i], 20, colorTab[5], 2, 8, 0);
+		char text[20];
+		sprintf(text, "%d,%d", mCorners[i].x, mCorners[i].y);
+		putText(biggestContour, text, mCorners[i], CV_FONT_NORMAL, 1, colorTab[5]);
 	}
 	cout << mCorners.size() << " corners found\n";
-	//vector<vector<Point>> hull;
-	//convexHull(mCorners, hull, false, true);
-	//drawContours(biggestContour, hull, 0, Scalar(55, 55, 55), 1, 8, noArray(), INT_MAX, Point());
-	//rectangle(biggestContour, boundRect, colorTab[3], 3, 8, 0);
-
 	/// Showing the result
 	namedWindow("corners", CV_WINDOW_AUTOSIZE);
 	imshow("corners", biggestContour);
-	waitKey(0);
+
 	/**************************************/
 	vector<Point> dstCorners;
 	dstCorners.push_back(Point(0, 0));
 	dstCorners.push_back(Point(900, 0));
 	dstCorners.push_back(Point(900, 900));
 	dstCorners.push_back(Point(0, 900));
-	Point2f newCorners[4];
+	Point2i newCorners[4];
 	for (int i = 0; i < 4; i++){
 		newCorners[i] = mCorners[i];
 	}
@@ -174,14 +207,300 @@ void otoCornerDetect(const Mat& src) {
 	for (int i = 0; i < 4; i++) {
 		mCorners[i] = newCorners[i];
 	}
-	
-	Mat H = findHomography(mCorners, dstCorners, noArray(), 0, 3.0);
-	//imshow("homografy", dstCorners);
-
-	Mat outputImage;
-	warpPerspective(src, outputImage, H, Size(biggestContour.cols, biggestContour.rows));
-	imshow("output", outputImage);
+	/***************/
+	Mat result = divideAndProject(src, contours[biggest_index], mCorners, DIV_IMG, DIV_IMG);
+	imshow("Result", result);
 	waitKey();
+
+	//Mat H = findHomography(mCorners, dstCorners, noArray(), 0, 3.0);
+	//Mat outputImage;
+	//warpPerspective(src, outputImage, H, Size(biggestContour.cols, biggestContour.rows));
+	//imshow("output", outputImage);
+	//waitKey();
+}
+double distancePoints(Point a, Point b) {
+	return sqrt(pow(a.x - b.x, 2) + pow(a.y - b.y, 2));
+}
+Mat divideAndProject(const Mat img, vector<Point> contour, vector<Point> vertices, const int r, const int c) {
+	int Height = img.size().height;
+	int Width = img.size().width;	
+	Mat segments = img.clone();// = Mat::zeros(img.size(), CV_8UC3);
+	Mat OutputImage, warped;
+	int rt_i=-1, lt_i=-1, rb_i=-1, lb_i=-1;	
+
+	contour = fillPoints(contour);
+
+	//finding indexes of corners with given contour and points
+	vector<Point> leftEdge, rightEdge, topEdge, buttomEdge;
+	for (int i = 0; i < contour.size(); i++)
+	{
+		if (distancePoints(contour[i], vertices[0])<5) lt_i = i;
+		if (distancePoints(contour[i], vertices[1])<5) rt_i = i;
+		if (distancePoints(contour[i], vertices[2])<5) rb_i = i;
+		if (distancePoints(contour[i], vertices[3])<5) lb_i = i;
+	}
+	//draw contour start-end points
+	cout << "st"<<contour[0] << endl;
+	cout << "fn"<<contour[contour.size() - 1] << endl;
+	if (lt_i == -1 || rt_i == -1 || rb_i == -1 || lb_i == -1) {
+		cout << "finding corner error\n";
+		exit(-1);
+	}
+
+	//cout << "lt_i:"<< lt_i << ">" << contour[lt_i] << endl;
+	//cout << "rt_i:"<< rt_i << ">" << contour[rt_i] << endl;
+	//cout << "rb_i:"<< rb_i << ">" << contour[rb_i] << endl;
+	//cout << "lb_i:"<< lb_i << ">" << contour[lb_i] << endl;
+	//cout << "contours.size():" << contour.size() << endl;
+
+	/////KONTORUN HANGI EDGE DEN BASLADIGINI BULUP EDGELERI AYIRIR
+	enum WHICH{LEFT=0,BUTTOM,RIGHT,TOP};
+	WHICH EDGE;
+	int startingContour= -1;
+	if (lt_i<rt_i && lt_i<rb_i && lt_i<lb_i) EDGE = TOP;
+	if (rt_i<lt_i && rt_i<rb_i && rt_i<lb_i) EDGE = RIGHT;
+	if (lb_i<rt_i && lb_i<rb_i && lb_i<lt_i) EDGE = LEFT;
+	if (rb_i < rt_i && rb_i < lt_i && rb_i < lb_i) EDGE = BUTTOM;
+	
+	
+	if (EDGE == TOP) {
+		cout << "contour starting TOP\n";
+		for (int i = lt_i; i <= lb_i; i++)
+			leftEdge.push_back(contour[i]);
+		for (int i = lb_i; i <= rb_i; i++) 
+			buttomEdge.push_back(contour[i]);
+		for (int i = rt_i; i >= rb_i; i--) 
+			rightEdge.push_back(contour[i]);
+
+		for (int i = lt_i; i >= 0; i--) 
+			topEdge.push_back(contour[i]);
+		for (int i = contour.size(); i >= rt_i; i--)
+			topEdge.push_back(contour[i]);
+	}
+	else if (EDGE == LEFT) {
+		cout << "contour starting LEFT\n";
+		for (int i = lb_i; i <= rb_i; i++) 
+			buttomEdge.push_back(contour[i]);
+		for (int i = rt_i ; i >= rb_i; i--) 
+			rightEdge.push_back(contour[i]);
+		for (int i = lt_i ; i >= rt_i; i--) 
+			topEdge.push_back(contour[i]);
+
+		for (int i = lt_i; i < contour.size(); i++) 
+			leftEdge.push_back(contour[i]);
+		for (int i = 0; i <= lb_i; i++) 
+			leftEdge.push_back(contour[i]);
+	}
+	else if (EDGE == BUTTOM) {
+		cout << "contour starting BUTTOM\n";
+		for (int i = lt_i; i <= lb_i; i++) 
+			leftEdge.push_back(contour[i]);
+		for (int i = rt_i; i >= rb_i; i--)
+			rightEdge.push_back(contour[i]);
+		for (int i = lt_i ; i >= rt_i; i--)
+			topEdge.push_back(contour[i]);
+
+		for (int i = lb_i; i < contour.size(); i++)
+			buttomEdge.push_back(contour[i]);
+		for (int i = 0; i < rb_i; i++) 
+			buttomEdge.push_back(contour[i]);		
+	}
+	else {//RIGHT
+		cout << "contour starting RIGHT\n";
+		for (int i = lt_i; i <= lb_i; i++)
+			leftEdge.push_back(contour[i]);
+		for (int i = lt_i; i >= rt_i; i--) 
+			topEdge.push_back(contour[i]);
+		for (int i = lb_i; i <= rb_i; i++) 
+			buttomEdge.push_back(contour[i]);
+
+		for (int i = rt_i; i >= 0; i--) 
+			rightEdge.push_back(contour[i]);
+		for (int i = contour.size()-1; i >= rb_i; i--)
+			rightEdge.push_back(contour[i]);
+	}
+
+	
+	vector<vector<Point>> coordinates;
+	coordinates.resize(r + 1);
+	for (int i = 0; i <= r; i++){
+		coordinates[i].resize(c + 1);
+	}
+	cout << "leftEdge  :" << leftEdge.size()<<" "<< leftEdge[0] << " " << leftEdge[leftEdge.size() - 1] << endl;
+	cout << "buttomEdge:" << buttomEdge.size() << " "<<buttomEdge[0] << " " << buttomEdge[buttomEdge.size() - 1] << endl;
+	cout << "rightEdge :" << rightEdge.size() << " " <<rightEdge[0] << " " << rightEdge[rightEdge.size() - 1] << endl;
+	cout << "topEdge   :" << topEdge.size() << " "<<topEdge[0] << " " << topEdge[topEdge.size() - 1] << endl;
+	//draw edge pixels
+	//for (int i = 0; i<leftEdge.size(); i++)
+	//	circle(segments, cvPoint(leftEdge[i].x, leftEdge[i].y), 2, colorTab[0], -1, 8, 0);
+	//for (int i = 0; i<buttomEdge.size(); i++)
+	//	circle(segments, cvPoint(buttomEdge[i].x, buttomEdge[i].y), 2, colorTab[1], -1, 8, 0);
+	//for (int i = 0; i<rightEdge.size(); i++)
+	//	circle(segments, cvPoint(rightEdge[i].x, rightEdge[i].y), 2, colorTab[2], -1, 8, 0);
+	//for (int i = 0; i<topEdge.size(); i++)
+	//	circle(segments, cvPoint(topEdge[i].x, topEdge[i].y), 2, colorTab[3], -1, 8, 0);
+
+	//edge noktalarý bul
+	vector<int> l_index, r_index, t_index, b_index;
+	double l_to = (double)(leftEdge.size() / r);
+	double r_to = (double)(rightEdge.size() / r);
+	double t_to = (double)(topEdge.size() / c);
+	double b_to = (double)(buttomEdge.size() / c); 
+	for (int i = 0; i <= r; i++)
+	{
+		l_index.push_back(round(l_to*i));
+		r_index.push_back(round(r_to*i));
+		circle(segments, leftEdge[l_index[i]], 5, colorTab[0]);
+		circle(segments, rightEdge[r_index[i]], 10, colorTab[1]);
+	}
+	for (int i = 0; i <= c; i++)
+	{
+		t_index.push_back(round(t_to*i));
+		b_index.push_back(round(b_to*i));
+		circle(segments, topEdge[t_index[i]], 15, colorTab[2]);
+		circle(segments, buttomEdge[b_index[i]], 20, colorTab[3]);
+	}
+	
+	for (int i = 0; i <= r; i++){
+		for (int j = 0; j <= c; j++){
+			coordinates[i][j].x = leftEdge[l_index[i]].x + round((((double)rightEdge[r_index[i]].x - leftEdge[l_index[i]].x) / c) * j);
+			coordinates[i][j].y = topEdge[t_index[j]].y  + round((((double)buttomEdge[b_index[j]].y - topEdge[t_index[j]].y) / r) * i);
+	//		cout << "coordinates[" << i << "][" << j << "]:" << coordinates[i][j] << endl;
+			circle(segments, coordinates[i][j], 2, colorTab[5],2);
+		}
+	}	
+	
+	//cout << "-------------------------------" << endl;
+	//cout << coordinates[0][0] << "--" << coordinates[0][c] << endl;
+	//cout << coordinates[r][0] << "--" << coordinates[r][c] << endl;
+	//cout << "-------------------------------" << endl;
+	//calculate target coordinate acc. to selected points
+	int xMin = INT_MAX, xMax = INT_MIN,
+		yMin = INT_MAX, yMax = INT_MIN;
+	for (int i = 0; i < 4; i++) {
+		if (vertices[i].x > xMax) xMax = vertices[i].x;
+		if (vertices[i].x < xMin) xMin = vertices[i].x;
+		if (vertices[i].y > yMax) yMax = vertices[i].y;
+		if (vertices[i].y < yMin) yMin = vertices[i].y;
+	}
+	for (int i = 0; i < 4; i++)
+	{
+		cout << "Vertices[" << i << "]:" << vertices[i] << endl;
+	}
+	int tWidth = (xMax - xMin)*1.2;
+	int tHeight = (yMax - yMin)*1.2;
+	cout << "tWidth:" << tWidth << endl;
+	cout << "tHeight:" << tHeight << endl;
+	
+
+	//parcalari bilestirmek icin gereken koordinatlar
+	vector<vector<Point>> Targets;
+	Targets.resize(r+1);
+	for (int i = 0; i < (r+1); i++) {
+		Targets[i].resize(c+1);
+	}
+	for (int i = 0; i <= r; i++) {
+		for (int j = 0; j <= c; j++) {
+			Targets[i][j].x = round((double)(Width / c) * j);
+			Targets[i][j].y = round((double)(Height / r) * i);
+			//cout << "Targets" << i << "," << j << ":" << Targets[i][j] << endl;
+		}
+	}
+	//cout << "-------------------------------" << endl;
+	//cout << Targets[0][0] << "--" << Targets[0][c] << endl;
+	//cout << Targets[r][0] << "--" << Targets[r][c] << endl;
+	//cout << "-------------------------------" << endl;
+
+	//warping  
+	Mat output_image = Mat::zeros(Size(Width/c, Height/r), CV_8UC3);
+	warped = Mat::zeros(img.size(), CV_8UC3);
+	Mat imgRect = img.clone();
+
+	int scale_x = Width / c;
+	int scale_y = Height / r;
+	for (int i = 0; i < (r); i++) {
+		for (int j = 0; j < (c); j++){
+			vector<Point> P1(4);
+			P1.clear();
+			P1.push_back(coordinates[i][j]);
+			P1.push_back(coordinates[i][j+1]);
+			P1.push_back(coordinates[i+1][j+1]);
+			P1.push_back(coordinates[i+1][j]);
+			vector<Point> P2(4);
+			P2.clear();
+			P2.push_back(Point(0, 0));
+			P2.push_back(Point(scale_x, 0));
+			P2.push_back(Point(scale_x, scale_y));
+			P2.push_back(Point(0, scale_y));
+
+			Mat H = Mat::zeros(Size(3, 3), CV_8UC3); 
+			drawPoly(segments, P1);
+			//drawPoly(imgRect, Targets[i][j], Targets[i][j+1], Targets[ +1][j+1], Targets[i+1][j]);
+			//rectangle(rects, P1[1],P1[3], Scalar(0, 0, 0), 1, 8, 0);
+						
+			H=findHomography(P1, P2, noArray(), 0, 3.0);
+
+			warpPerspective(img, output_image, H, Size(output_image.cols, output_image.rows));
+			drawPoly(output_image, P2);
+
+			output_image.copyTo(warped.rowRange(Targets[i][j].y,Targets[i+1][j].y).colRange(Targets[i][j].x, Targets[i][j+1].x));
+			//cout << Targets[i][j].y << "," << Targets[i + 1][j].y << "-" << Targets[i][j].x << "," << Targets[i][j + 1].x << endl;
+		}
+	}
+	imshow("segments", segments);
+	//imshow("imgRect", imgRect);
+
+
+	return warped;
+}
+vector<Point> fillPoints(vector<Point> src) {
+	assert(src.size() < 2);
+	vector<Point> dst;
+	int vSize = src.size();
+	int i=0, j=0;
+	cout << "size:" <<vSize << endl;
+	for (int i = 0; i < (vSize -1); i++){
+		int j = i + 1;
+
+		int x1 = src[i].x;
+		int x2 = src[j].x;
+		int y1 = src[i].y;
+		int y2 = src[j].y;
+
+		dst.push_back(src[i]);
+		double m = (double)(y2 - y1) / (x2 - x1);
+		for (int j = 1; j <= abs(x2 - x1); j++)
+		{
+			if (x2 >= x1) {
+				int x = x1 + j;
+				dst.push_back(Point(x, m*x - m*x1 + y1));
+			}
+			else {
+				int x = x1 - j;
+				dst.push_back(Point(x, m*x - m*x1 + y1));
+			}			
+		}		
+	}
+	int x1 = src[vSize-1].x;
+	int x2 = src[0].x;
+	int y1 = src[vSize-1].y;
+	int y2 = src[0].y;
+
+	dst.push_back(src[vSize-1]);
+	double m = (double)(y2 - y1) / (x2 - x1);
+	for (int j = 1; j <= abs(x2 - x1); j++)
+	{
+		if (x2 >= x1) {
+			int x = x1 + j;
+			dst.push_back(Point(x, m*x - m*x1 + y1));
+		}
+		else {
+			int x = x1 - j;
+			dst.push_back(Point(x, m*x - m*x1 + y1));
+		}
+	}	
+
+	return dst;
 }
 void checkPoint(int a, int b) {
 	bool isNear = false;
@@ -267,18 +586,18 @@ void select4Corner(const Mat& img){
 		if (roi4point[i].y < yMin)
 			yMin = roi4point[i].y;
 	}
-	int Weight = xMax - xMin;
-	int Height = yMax - yMin;
+	int tWidth = xMax - xMin;
+	int tHeight = yMax - yMin;
 	cout << "min_x:" << xMin << " max_x:" << xMax <<
 		"\nmin_y:" << yMin << " max_y:" << yMax <<
-		"\ntargetWeight:" << Weight << " targetHeight:" << Height << endl;
+		"\ntargetWidth:" << tWidth << " targetHeight:" << tHeight << endl;
 
 	//user setting position  
 	vector<Point> P2(4);
 	P2[0].x = 0; P2[0].y = 0;
-	P2[1].x = Weight; P2[1].y = 0;
-	P2[2].x = Weight; P2[2].y = Height;
-	P2[3].x = 0; P2[3].y = Height;
+	P2[1].x = tWidth; P2[1].y = 0;
+	P2[2].x = tWidth; P2[2].y = tHeight;
+	P2[3].x = 0; P2[3].y = tHeight;
 
 	//get homography  
 	Mat trP1, trP2;
@@ -288,48 +607,18 @@ void select4Corner(const Mat& img){
 	cout << "\nHOMOGRAPHY MATRIX2:" << H.rows << "x" << H.cols << endl << H << endl << endl;
 
 	//warping  
-	Mat output_image = Mat::zeros(Size(Weight, Height), CV_8UC3);
+	Mat output_image = Mat::zeros(Size(tWidth, tHeight), CV_8UC3);
 	warpPerspective(img, output_image, H, Size(output_image.cols, output_image.rows));
-	rectangle(output_image, Point(0, 0), Point(Weight, Height), CV_RGB(255, 0, 0));
+	rectangle(output_image, Point(0, 0), Point(tWidth, tHeight), CV_RGB(255, 0, 0));
 	imshow("output_image", output_image);
 
-	//calculation confirm  
 	
-/*
-	Mat A(3, 4, CV_64F); //3xN, P1  
-	Mat B(3, 4, CV_64F); //3xN, P2  
-						 //B = H*A  (P2 = h(P1))  
-
-
-	for (int i = 0; i< 4; ++i)
-	{
-		A.at< double>(0, i) = P1[i].x;
-		A.at< double>(1, i) = P1[i].y;
-		A.at< double>(2, i) = 1;
-
-		B.at< double>(0, i) = P2[i].x;
-		B.at< double>(1, i) = P2[i].y;
-		B.at< double>(2, i) = 1;
-	}
-
-	//cout << "a" << endl << A << endl;
-	//cout << "b" << endl << B << endl;
-	
-	Mat HA = H*A;
-
-	for (int i = 0; i< 4; ++i)
-	{
-		HA.at< double>(0, i) /= HA.at< double>(2, i);
-		HA.at< double>(1, i) /= HA.at< double>(2, i);
-		HA.at< double>(2, i) /= HA.at< double>(2, i);
-	}
-
-	cout << "HA" << endl << HA << endl;
-	*/
 	waitKey(0);
+	destroyAllWindows();
+	exit(EXIT_SUCCESS);
 
 }
-void PointOrderbyConner(Point2f* inPoints, int w, int h){
+void PointOrderbyConner(Point2i* inPoints, int w, int h){
 	vector< pair< float, float> > s_point;
 	for (int i = 0; i< 4; ++i)
 		s_point.push_back(make_pair(inPoints[i].x, inPoints[i].y));
@@ -366,12 +655,25 @@ void PointOrderbyConner(Point2f* inPoints, int w, int h){
 		inPoints[3].y = s_point[2].second;
 	}
 }
-static void onMouse(int event, int x, int y, int, void*){
-	if (event == CV_EVENT_LBUTTONDOWN && oksign == false){
+
+
+
+
+
+
+
+
+
+
+
+
+
+static void onMouse(int event, int x, int y, int, void*) {
+	if (event == CV_EVENT_LBUTTONDOWN && oksign == false) {
 		//4 point select  
-		if (roiIndex >= 4){
+		if (roiIndex >= 4) {
 			roiIndex = 0;
-			for (int i = 0; i< 4; ++i)
+			for (int i = 0; i < 4; ++i)
 				roi4point[i].x = roi4point[i].y = 0;
 		}
 
@@ -385,15 +687,63 @@ static void onMouse(int event, int x, int y, int, void*){
 		roiIndex++;
 	}
 
-	if (event == CV_EVENT_RBUTTONDOWN){
+	if (event == CV_EVENT_RBUTTONDOWN) {
 		//set point.  
-		if (roiIndex == 4){
+		if (roiIndex == 4) {
 			oksign = true;
 			printf("Warping \n");
 		}
 	}
 }
+vector<Point> DouglasPeucker(vector<Point> &points, double epsilon) {
+	if (points.size() <= 2) {
+		return points;
+	}
 
+	list<Point> l = DouglasPeuckerWrapper(points, points.begin(), --(points.end()), epsilon);
+	vector<Point> result{ begin(l), end(l) };
+	return result;
+}
+double distance_to_Line(cv::Point line_start, cv::Point line_end, cv::Point point)
+{
+	double normalLength = _hypot(line_end.x - line_start.x, line_end.y - line_start.y);
+	double distance = (double)((point.x - line_start.x) * (line_end.y - line_start.y) -
+		(point.y - line_start.y) * (line_end.x - line_start.x)) / normalLength;
+	return distance < 0 ? distance * -1 : distance;
+}
+list<Point> DouglasPeuckerWrapper(vector<Point> &points, vector<Point>::iterator it1, vector<Point>::iterator it2, double epsilon) {
+	// Find the point with the maximum distance
+	double dmax = 0;
+	vector<Point>::iterator indexIt;
+
+	for (vector<Point>::iterator tempIt = it1 + 1; tempIt != it2; ++tempIt) {
+		double d = distance_to_Line(*it1, *it2, *tempIt);
+		if (d > dmax) {
+			dmax = d;
+			indexIt = tempIt;
+		}
+	}
+
+	// If max distance is greater than epsilon, recursively simplify
+	if (dmax > epsilon) {
+		// Recursive call
+		list<Point> l1, l2;
+		l1 = DouglasPeuckerWrapper(points, it1, indexIt, epsilon);
+		l2 = DouglasPeuckerWrapper(points, indexIt, it2, epsilon);
+		l1.pop_back();
+		for (list<Point>::iterator itr = l2.begin(); itr != l2.end(); ++itr) {
+			l1.push_back(*itr);
+		}
+		return l1;
+	}
+	else {
+		// Erase all the points between it1 and it2
+		list<Point> l;
+		l.push_back(*it1);
+		l.push_back(*it2);
+		return l;
+	}
+}
 Mat compute_homographyM(Mat m, Mat M, Mat& Hnorm, Mat& inv_Hnorm) {
 	return findHomography(m, M);
 }
@@ -621,7 +971,6 @@ Mat compute_homographyM(Mat m, Mat M, Mat& Hnorm, Mat& inv_Hnorm) {
 	
 }
 */
-
 Mat p2d_rectangularM(Mat InputImage,Mat Vertices, int Interpolation) {
 	//Mat A(1, 3, CV_64F);
 	Mat P1 = Vertices.row(0);//top-left corner
@@ -734,6 +1083,5 @@ Mat p2d_interpolateM(Mat Image, Mat P, int Method) {
 	}
 	return Pixel;
 }
-
 
 #endif // !_HEADER_
