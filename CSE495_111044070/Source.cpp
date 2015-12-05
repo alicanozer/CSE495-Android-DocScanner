@@ -1,32 +1,19 @@
 #ifndef _HEADER_
 #include "Header.h"
-#include <fstream>
-#include <time.h> // to calculate time needed
-#define MAX_HEIGHT 1080 //max height of input image
-#define AUTO_CORNER_DETECTION 1
-#define DIV_IMG 36
 
-void drawPoly(Mat img, vector<Point> vp) {
-	if (vp.size() != 4) {
-		cout << "drawPoly error\n";
-		return;
-	}
-	line(img, vp[0], vp[1], Scalar(0, 0, 0));
-	line(img, vp[1], vp[2], Scalar(0, 0, 0));
-	line(img, vp[2], vp[3], Scalar(0, 0, 0));
-	line(img, vp[3], vp[0], Scalar(0, 0, 0));
-}
-void drawPoly(Mat img, Point lt, Point rt, Point rb, Point lb) {
+#define MAX_HEIGHT 900 //max height of input image
+#define CORNER_AREA  10
+#define AUTO_CORNER_DETECTION 0
+#define NUMOFSEGMENTS 36
+#define MIN_THRES 70
+#define MAX_THRES 255
+#define IMAGEPATH "C:/Users/Can/Desktop/Data/media/scan26.jpg"
 
-	line(img, lt, rt, Scalar(0, 0, 0));
-	line(img, rt, rb, Scalar(0, 0, 0));
-	line(img, rb, lb, Scalar(0, 0, 0));
-	line(img, lb, lt, Scalar(0, 0, 0));
-}
-vector<Point> fillPoints(vector<Point> src);
+bool isSelected = false;
+
 int main(int argc, char** argv){
 
-	Mat src = imread("C:/Users/Can/Desktop/Data/img_0184.jpg");//19
+	Mat src = imread(IMAGEPATH);//19
 	if (!src.data) {
 		cout << "no input image\n";
 		return 0;
@@ -45,34 +32,10 @@ int main(int argc, char** argv){
 		row = src.rows;
 		col = src.cols;
 	}
-	int sayi = min(row, col);
-	int ebob=1;
 
-	for (int i = sayi; i > 0; i--){
-		if ((row % i) == 0 && (col % i) == 0){
-			ebob = i;
-			break;
-		}
-	}
-	cout << "ebob:" << ebob << endl;
-
-	/*
-	float dummy_query_data[8] = { 172, 287, 1031, 256, 1249, 773, 40, 873 };
-	Mat Vertices = cv::Mat(4, 2, CV_32FC1, dummy_query_data);
-	Mat output = p2d_rectangularM(src, Vertices, 1);
-	cout << "returned:"<<output.dims << endl;
-	cout << output.rows << endl;
-	cvtColor(output, output, CV_RGB2GRAY);
-	imshow("result1", output);
-	waitKey();
-	*/
-	
 
 	if (AUTO_CORNER_DETECTION) {
 		otoCornerDetect(src);
-		//Mat result = divideAndProject(src, 1, 2);
-		//imshow("dividexx", result);
-		//waitKey();
 	}
 	else {
 		select4Corner(src);	
@@ -93,7 +56,7 @@ void otoCornerDetect(const Mat& src) {
 	blur(src_gray, src_blur, Size(3, 3));
 
 	/// Detect edges using canny	
-	Canny(src_blur, canny_output, min_thresh, min_thresh*2.0, 3);
+	Canny(src_blur, canny_output, MIN_THRES, MAX_THRES, 3);
 	
 	/// Find contours
 	findContours(canny_output, contours, noArray(), CV_RETR_LIST, CV_CHAIN_APPROX_SIMPLE, Point());
@@ -173,7 +136,7 @@ void otoCornerDetect(const Mat& src) {
 
 	for (int i = 0; i < dst_norm.rows; i++) {
 		for (int j = 0; j < dst_norm.cols; j++) {
-			if ((int)dst_norm.at<float>(i, j) > min_thresh*2.0) {
+			if ((int)dst_norm.at<float>(i, j) > (MIN_THRES*2)) {
 				//circle(biggestContour, Point(j, i), 10, colorTab[i % 5], 2, 8, 0);
 				//cout << "unchecked point of corner " << i << "_" << j << endl;
 				checkPoint(j, i);
@@ -192,6 +155,8 @@ void otoCornerDetect(const Mat& src) {
 	/// Showing the result
 	namedWindow("corners", CV_WINDOW_AUTOSIZE);
 	imshow("corners", biggestContour);
+	waitKey();
+	destroyWindow("corners");
 
 	/**************************************/
 	vector<Point> dstCorners;
@@ -203,124 +168,141 @@ void otoCornerDetect(const Mat& src) {
 	for (int i = 0; i < 4; i++){
 		newCorners[i] = mCorners[i];
 	}
-	PointOrderbyConner(newCorners, src.size().width, src.size().height);
+	PointOrderbyCorner(newCorners, src.size().width, src.size().height);
 	for (int i = 0; i < 4; i++) {
 		mCorners[i] = newCorners[i];
 	}
 	/***************/
-	Mat result = divideAndProject(src, contours[biggest_index], mCorners, DIV_IMG, DIV_IMG);
+	Mat result = divideAndProject(src, contours[biggest_index], mCorners, NUMOFSEGMENTS, NUMOFSEGMENTS);
 	imshow("Result", result);
 	waitKey();
 
-	//Mat H = findHomography(mCorners, dstCorners, noArray(), 0, 3.0);
-	//Mat outputImage;
-	//warpPerspective(src, outputImage, H, Size(biggestContour.cols, biggestContour.rows));
-	//imshow("output", outputImage);
-	//waitKey();
 }
 double distancePoints(Point a, Point b) {
 	return sqrt(pow(a.x - b.x, 2) + pow(a.y - b.y, 2));
 }
 Mat divideAndProject(const Mat img, vector<Point> contour, vector<Point> vertices, const int r, const int c) {
 	int Height = img.size().height;
-	int Width = img.size().width;	
+	int Width = img.size().width;
 	Mat segments = img.clone();// = Mat::zeros(img.size(), CV_8UC3);
 	Mat OutputImage, warped;
-	int rt_i=-1, lt_i=-1, rb_i=-1, lb_i=-1;	
+	int rt_i = -1, lt_i = -1, rb_i = -1, lb_i = -1;
+
+	cout << "aa\n";
+	cout << "origin_size:" << contour.size() << endl;
 
 	contour = fillPoints(contour);
-
-	//finding indexes of corners with given contour and points
-	vector<Point> leftEdge, rightEdge, topEdge, buttomEdge;
+	cout << "filled_size:" << contour.size() << endl;
+	Mat extended = img.clone();
 	for (int i = 0; i < contour.size(); i++)
 	{
-		if (distancePoints(contour[i], vertices[0])<5) lt_i = i;
-		if (distancePoints(contour[i], vertices[1])<5) rt_i = i;
-		if (distancePoints(contour[i], vertices[2])<5) rb_i = i;
-		if (distancePoints(contour[i], vertices[3])<5) lb_i = i;
+		circle(extended, contour[i], 2, CV_RGB(255, 0, 0));
 	}
-	//draw contour start-end points
-	cout << "st"<<contour[0] << endl;
-	cout << "fn"<<contour[contour.size() - 1] << endl;
+
+	//finding indexes of corners with given contour and points
+	vector<int> edgeIndex(4);
+	edgeIndex.clear();
+	vector<Point> leftEdge, rightEdge, topEdge, buttomEdge;
+	for (int j = 0; j < 4; j++) {
+		double dist_min = INT_MAX;
+		for (int i = 0; i < contour.size(); i++) {			
+			double dist = distancePoints(contour[i], vertices[j]);
+			if (dist < dist_min) {
+				dist_min = dist;
+				edgeIndex[j] = i;
+			}
+		}
+		
+	/*	if (distancePoints(contour[i], vertices[0]) < 5) lt_i = i;
+		if (distancePoints(contour[i], vertices[1]) < 5) rt_i = i;
+		if (distancePoints(contour[i], vertices[2]) < 5) rb_i = i;
+		if (distancePoints(contour[i], vertices[3]) < 5) lb_i = i;*/
+	}
+	lt_i = edgeIndex[0];
+	rt_i = edgeIndex[1];
+	rb_i = edgeIndex[2];
+	lb_i = edgeIndex[3];
+
 	if (lt_i == -1 || rt_i == -1 || rb_i == -1 || lb_i == -1) {
 		cout << "finding corner error\n";
 		exit(-1);
 	}
 
-	//cout << "lt_i:"<< lt_i << ">" << contour[lt_i] << endl;
-	//cout << "rt_i:"<< rt_i << ">" << contour[rt_i] << endl;
-	//cout << "rb_i:"<< rb_i << ">" << contour[rb_i] << endl;
-	//cout << "lb_i:"<< lb_i << ">" << contour[lb_i] << endl;
-	//cout << "contours.size():" << contour.size() << endl;
-
 	/////KONTORUN HANGI EDGE DEN BASLADIGINI BULUP EDGELERI AYIRIR
-	enum WHICH{LEFT=0,BUTTOM,RIGHT,TOP};
-	WHICH EDGE;
+	enum STARTINGPOINT{LEFT=0,BUTTOM,RIGHT,TOP};
+	STARTINGPOINT EDGE;
 	int startingContour= -1;
 	if (lt_i<rt_i && lt_i<rb_i && lt_i<lb_i) EDGE = TOP;
 	if (rt_i<lt_i && rt_i<rb_i && rt_i<lb_i) EDGE = RIGHT;
 	if (lb_i<rt_i && lb_i<rb_i && lb_i<lt_i) EDGE = LEFT;
-	if (rb_i < rt_i && rb_i < lt_i && rb_i < lb_i) EDGE = BUTTOM;
+	if (rb_i<rt_i && rb_i<lt_i && rb_i<lb_i) EDGE = BUTTOM;
 	
 	
-	if (EDGE == TOP) {
-		cout << "contour starting TOP\n";
-		for (int i = lt_i; i <= lb_i; i++)
-			leftEdge.push_back(contour[i]);
-		for (int i = lb_i; i <= rb_i; i++) 
-			buttomEdge.push_back(contour[i]);
-		for (int i = rt_i; i >= rb_i; i--) 
-			rightEdge.push_back(contour[i]);
-
-		for (int i = lt_i; i >= 0; i--) 
-			topEdge.push_back(contour[i]);
-		for (int i = contour.size(); i >= rt_i; i--)
-			topEdge.push_back(contour[i]);
-	}
-	else if (EDGE == LEFT) {
+	switch (EDGE){
+	case LEFT:
 		cout << "contour starting LEFT\n";
-		for (int i = lb_i; i <= rb_i; i++) 
+		for (int i = lb_i; i <= rb_i; i++)
 			buttomEdge.push_back(contour[i]);
-		for (int i = rt_i ; i >= rb_i; i--) 
+		for (int i = rt_i; i >= rb_i; i--)
 			rightEdge.push_back(contour[i]);
-		for (int i = lt_i ; i >= rt_i; i--) 
+		for (int i = lt_i; i >= rt_i; i--)
 			topEdge.push_back(contour[i]);
 
-		for (int i = lt_i; i < contour.size(); i++) 
+		for (int i = lt_i; i < contour.size(); i++)
 			leftEdge.push_back(contour[i]);
-		for (int i = 0; i <= lb_i; i++) 
+		for (int i = 0; i <= lb_i; i++)
 			leftEdge.push_back(contour[i]);
-	}
-	else if (EDGE == BUTTOM) {
+		break;
+	case BUTTOM:
 		cout << "contour starting BUTTOM\n";
-		for (int i = lt_i; i <= lb_i; i++) 
+		for (int i = lt_i; i <= lb_i; i++)
 			leftEdge.push_back(contour[i]);
 		for (int i = rt_i; i >= rb_i; i--)
 			rightEdge.push_back(contour[i]);
-		for (int i = lt_i ; i >= rt_i; i--)
+		for (int i = lt_i; i >= rt_i; i--)
 			topEdge.push_back(contour[i]);
 
 		for (int i = lb_i; i < contour.size(); i++)
 			buttomEdge.push_back(contour[i]);
-		for (int i = 0; i < rb_i; i++) 
-			buttomEdge.push_back(contour[i]);		
-	}
-	else {//RIGHT
+		for (int i = 0; i < rb_i; i++)
+			buttomEdge.push_back(contour[i]);
+		break;
+	case RIGHT:
 		cout << "contour starting RIGHT\n";
 		for (int i = lt_i; i <= lb_i; i++)
 			leftEdge.push_back(contour[i]);
-		for (int i = lt_i; i >= rt_i; i--) 
+		for (int i = lt_i; i >= rt_i; i--)
 			topEdge.push_back(contour[i]);
-		for (int i = lb_i; i <= rb_i; i++) 
+		for (int i = lb_i; i <= rb_i; i++)
 			buttomEdge.push_back(contour[i]);
 
-		for (int i = rt_i; i >= 0; i--) 
+		for (int i = rt_i; i >= 0; i--)
 			rightEdge.push_back(contour[i]);
-		for (int i = contour.size()-1; i >= rb_i; i--)
+		for (int i = contour.size() - 1; i >= rb_i; i--)
 			rightEdge.push_back(contour[i]);
-	}
+		break;
+	case TOP:
+		cout << "contour starting TOP\n";
+		for (int i = lt_i; i <= lb_i; i++)
+			leftEdge.push_back(contour[i]);
+		for (int i = lb_i; i <= rb_i; i++)
+			buttomEdge.push_back(contour[i]);
+		for (int i = rt_i; i >= rb_i; i--)
+			rightEdge.push_back(contour[i]);
 
-	
+		for (int i = lt_i; i >= 0; i--)
+			topEdge.push_back(contour[i]);
+		for (int i = contour.size(); i >= rt_i; i--)
+			topEdge.push_back(contour[i]);
+		break;
+	default:
+		break;
+	} 
+	circle(segments, contour[lt_i], 4, colorTab[5], 4);
+	circle(segments, contour[rt_i], 4, colorTab[5], 4);
+	circle(segments, contour[rb_i], 4, colorTab[5], 4);
+	circle(segments, contour[lb_i], 4, colorTab[5], 4);
+
 	vector<vector<Point>> coordinates;
 	coordinates.resize(r + 1);
 	for (int i = 0; i <= r; i++){
@@ -346,34 +328,30 @@ Mat divideAndProject(const Mat img, vector<Point> contour, vector<Point> vertice
 	double r_to = (double)(rightEdge.size() / r);
 	double t_to = (double)(topEdge.size() / c);
 	double b_to = (double)(buttomEdge.size() / c); 
-	for (int i = 0; i <= r; i++)
-	{
+	for (int i = 0; i <= r; i++){
 		l_index.push_back(round(l_to*i));
 		r_index.push_back(round(r_to*i));
 		circle(segments, leftEdge[l_index[i]], 5, colorTab[0]);
-		circle(segments, rightEdge[r_index[i]], 10, colorTab[1]);
+		circle(segments, rightEdge[r_index[i]], 10, colorTab[2]);
+
 	}
-	for (int i = 0; i <= c; i++)
-	{
+	for (int i = 0; i <= c; i++){
 		t_index.push_back(round(t_to*i));
 		b_index.push_back(round(b_to*i));
-		circle(segments, topEdge[t_index[i]], 15, colorTab[2]);
-		circle(segments, buttomEdge[b_index[i]], 20, colorTab[3]);
+		circle(segments, topEdge[t_index[i]], 15, colorTab[3]);
+		circle(segments, buttomEdge[b_index[i]], 20, colorTab[1]);
+
 	}
-	
+
+	imshow("segments", segments);	
 	for (int i = 0; i <= r; i++){
 		for (int j = 0; j <= c; j++){
 			coordinates[i][j].x = leftEdge[l_index[i]].x + round((((double)rightEdge[r_index[i]].x - leftEdge[l_index[i]].x) / c) * j);
 			coordinates[i][j].y = topEdge[t_index[j]].y  + round((((double)buttomEdge[b_index[j]].y - topEdge[t_index[j]].y) / r) * i);
-	//		cout << "coordinates[" << i << "][" << j << "]:" << coordinates[i][j] << endl;
-			circle(segments, coordinates[i][j], 2, colorTab[5],2);
+
 		}
 	}	
 	
-	//cout << "-------------------------------" << endl;
-	//cout << coordinates[0][0] << "--" << coordinates[0][c] << endl;
-	//cout << coordinates[r][0] << "--" << coordinates[r][c] << endl;
-	//cout << "-------------------------------" << endl;
 	//calculate target coordinate acc. to selected points
 	int xMin = INT_MAX, xMax = INT_MIN,
 		yMin = INT_MAX, yMax = INT_MIN;
@@ -383,15 +361,13 @@ Mat divideAndProject(const Mat img, vector<Point> contour, vector<Point> vertice
 		if (vertices[i].y > yMax) yMax = vertices[i].y;
 		if (vertices[i].y < yMin) yMin = vertices[i].y;
 	}
-	for (int i = 0; i < 4; i++)
-	{
+	for (int i = 0; i < 4; i++){
 		cout << "Vertices[" << i << "]:" << vertices[i] << endl;
 	}
-	int tWidth = (xMax - xMin)*1.2;
-	int tHeight = (yMax - yMin)*1.2;
+	int tWidth = (xMax - xMin)*1;
+	int tHeight = (yMax - yMin)*1;
 	cout << "tWidth:" << tWidth << endl;
-	cout << "tHeight:" << tHeight << endl;
-	
+	cout << "tHeight:" << tHeight << endl;	
 
 	//parcalari bilestirmek icin gereken koordinatlar
 	vector<vector<Point>> Targets;
@@ -406,10 +382,6 @@ Mat divideAndProject(const Mat img, vector<Point> contour, vector<Point> vertice
 			//cout << "Targets" << i << "," << j << ":" << Targets[i][j] << endl;
 		}
 	}
-	//cout << "-------------------------------" << endl;
-	//cout << Targets[0][0] << "--" << Targets[0][c] << endl;
-	//cout << Targets[r][0] << "--" << Targets[r][c] << endl;
-	//cout << "-------------------------------" << endl;
 
 	//warping  
 	Mat output_image = Mat::zeros(Size(Width/c, Height/r), CV_8UC3);
@@ -418,8 +390,8 @@ Mat divideAndProject(const Mat img, vector<Point> contour, vector<Point> vertice
 
 	int scale_x = Width / c;
 	int scale_y = Height / r;
-	for (int i = 0; i < (r); i++) {
-		for (int j = 0; j < (c); j++){
+	for (int i = 0; i < r; i++) {
+		for (int j = 0; j < c; j++){
 			vector<Point> P1(4);
 			P1.clear();
 			P1.push_back(coordinates[i][j]);
@@ -433,74 +405,90 @@ Mat divideAndProject(const Mat img, vector<Point> contour, vector<Point> vertice
 			P2.push_back(Point(scale_x, scale_y));
 			P2.push_back(Point(0, scale_y));
 
-			Mat H = Mat::zeros(Size(3, 3), CV_8UC3); 
+			Mat H = Mat::zeros(Size(3, 3), CV_32F); 
 			drawPoly(segments, P1);
-			//drawPoly(imgRect, Targets[i][j], Targets[i][j+1], Targets[ +1][j+1], Targets[i+1][j]);
-			//rectangle(rects, P1[1],P1[3], Scalar(0, 0, 0), 1, 8, 0);
 						
 			H=findHomography(P1, P2, noArray(), 0, 3.0);
 
 			warpPerspective(img, output_image, H, Size(output_image.cols, output_image.rows));
+
 			drawPoly(output_image, P2);
 
 			output_image.copyTo(warped.rowRange(Targets[i][j].y,Targets[i+1][j].y).colRange(Targets[i][j].x, Targets[i][j+1].x));
-			//cout << Targets[i][j].y << "," << Targets[i + 1][j].y << "-" << Targets[i][j].x << "," << Targets[i][j + 1].x << endl;
 		}
 	}
 	imshow("segments", segments);
-	//imshow("imgRect", imgRect);
-
-
 	return warped;
 }
 vector<Point> fillPoints(vector<Point> src) {
 	assert(src.size() < 2);
 	vector<Point> dst;
+	dst.clear();
 	int vSize = src.size();
-	int i=0, j=0;
-	cout << "size:" <<vSize << endl;
-	for (int i = 0; i < (vSize -1); i++){
-		int j = i + 1;
-
-		int x1 = src[i].x;
-		int x2 = src[j].x;
-		int y1 = src[i].y;
-		int y2 = src[j].y;
+	cout << " in-size:" <<vSize << endl;	
+	int x1=0, x2=0, y1=0, y2=0;
+	for (int i = 0; i < vSize; i++) {
+		if (i == (vSize - 1)) {//bitis-baslangýc arasý
+			x1 = src[vSize-1].x;
+			y1 = src[vSize-1].y;
+			x2 = src[0].x;
+			y2 = src[0].y;
+		}
+		else {
+			x1 = src[i].x;
+			y1 = src[i].y;
+			x2 = src[i + 1].x;
+			y2 = src[i + 1].y;
+		}
 
 		dst.push_back(src[i]);
 		double m = (double)(y2 - y1) / (x2 - x1);
-		for (int j = 1; j <= abs(x2 - x1); j++)
-		{
-			if (x2 >= x1) {
-				int x = x1 + j;
-				dst.push_back(Point(x, m*x - m*x1 + y1));
+
+		if (abs(x2 - x1) > abs(y2 - y1)) {//x aralýgý y aralýgýndan buyukse
+			if (x2 > x1) {//dogru saga dogruysa
+				for (int j = x1+1; j < x2; j++) {
+					dst.push_back(Point(j, round((j - x1)*(y1 - y2) / (x1 - x2) + y1)));
+				}
 			}
-			else {
-				int x = x1 - j;
-				dst.push_back(Point(x, m*x - m*x1 + y1));
-			}			
-		}		
+			else {//dogru sola dogruysa
+				for (int j = x1-1; j >x2 ; j--) {
+					//dst.push_back(Point(j, round(m*j - m*x1 + y1)));
+					dst.push_back(Point(j, round((j - x1)*(y1 - y2) / (x1 - x2) + y1)));
+				}
+			}
+		}else {//y aralýgý daha buyukse
+			if (y2 > y1) {//dogru asagý dogruysa
+				for (int j = y1+1; j < y2; j++) {//get  x from y values
+					dst.push_back(Point(round((j - y1)*(x1 - x2)/(y1 - y2) + x1), j));
+				}
+			}
+			else {//yukarý dogruysa
+				for (int j = y1-1; j > y2; j--) {//get  x from y values
+					//dst.push_back(Point((round(j + m*x1 - y1) / m), j));
+					dst.push_back(Point(round((j - y1)*(x1 - x2) / (y1 - y2) + x1), j));
+				}
+			}
+		}
 	}
-	int x1 = src[vSize-1].x;
-	int x2 = src[0].x;
-	int y1 = src[vSize-1].y;
-	int y2 = src[0].y;
-
-	dst.push_back(src[vSize-1]);
-	double m = (double)(y2 - y1) / (x2 - x1);
-	for (int j = 1; j <= abs(x2 - x1); j++)
-	{
-		if (x2 >= x1) {
-			int x = x1 + j;
-			dst.push_back(Point(x, m*x - m*x1 + y1));
-		}
-		else {
-			int x = x1 - j;
-			dst.push_back(Point(x, m*x - m*x1 + y1));
-		}
-	}	
-
+	cout << "out-size:" << dst.size() << endl;
 	return dst;
+}
+void drawPoly(Mat img, vector<Point> vp) {
+	if (vp.size() != 4) {
+		cout << "drawPoly error\n";
+		return;
+	}
+	line(img, vp[0], vp[1], Scalar(0, 0, 0));
+	line(img, vp[1], vp[2], Scalar(0, 0, 0));
+	line(img, vp[2], vp[3], Scalar(0, 0, 0));
+	line(img, vp[3], vp[0], Scalar(0, 0, 0));
+}
+void drawPoly(Mat img, Point lt, Point rt, Point rb, Point lb) {
+
+	line(img, lt, rt, Scalar(0, 0, 0));
+	line(img, rt, rb, Scalar(0, 0, 0));
+	line(img, rb, lb, Scalar(0, 0, 0));
+	line(img, lb, lt, Scalar(0, 0, 0));
 }
 void checkPoint(int a, int b) {
 	bool isNear = false;
@@ -526,99 +514,92 @@ void checkPoint(int a, int b) {
 	}
 }
 void select4Corner(const Mat& img){
-	Mat RoiImg;
-	//window  
-	namedWindow("set roi by 4 points", 1);
-
-	//mouse callback  
-	setMouseCallback("set roi by 4 points", onMouse, 0);
-
-	while (1){
-		if (oksign == true) //right button click  
-			break;
-
-		//draw point  
-		RoiImg = img.clone();
-		for (int i = 0; i< roiIndex; ++i)
-			circle(RoiImg, roi4point[i], 5, CV_RGB(255, 0, 255), 5);
-		imshow("set roi by 4 points", RoiImg);
-
-		waitKey(10);
-		
-	}
-	destroyWindow("set roi by 4 points");
-	printf("points ordered by LT, RT, RB, LB \n");
-	PointOrderbyConner(roi4point, img.size().width, img.size().height);
-	for (int i = 0; i< 4; ++i){
-		printf("[%d] (%.2lf, %.2lf) \n", i, roi4point[i].x, roi4point[i].y);
-	}
-
-	//drwaring  
-	RoiImg = img.clone();
-	string TestStr[4] = { "LT","RT","RB","LB" };
-	putText(RoiImg, TestStr[0].c_str(), roi4point[0], CV_FONT_NORMAL, 1, Scalar(255, 0, 0), 3);
-	circle(RoiImg, roi4point[0], 1, CV_RGB(255, 255, 255),3);
-
-	for (int i = 1; i< roiIndex; ++i){
-		line(RoiImg, roi4point[i - 1], roi4point[i], CV_RGB(0, 255, 0), 3);
-		circle(RoiImg, roi4point[i], 1, CV_RGB(255, 255, 255), 3);
-		putText(RoiImg, TestStr[i].c_str(), roi4point[i], CV_FONT_NORMAL, 1, Scalar(255, 0, 0), 3);
-	}
-
-	line(RoiImg, roi4point[0], roi4point[roiIndex - 1], CV_RGB(0, 255, 0), 3);
-	imshow("set roi by 4 points2", RoiImg);
-
-	//prepare to get homography matrix  
-	vector< Point2f> P1; //clicked positions   
-	for (int i = 0; i< 4; ++i)
-		P1.push_back(roi4point[i]);
-
-	//calculate target coordinate acc. to selected points
-	int xMin = INT_MAX, xMax = INT_MIN,
-		yMin = INT_MAX, yMax = INT_MIN;
-	for (int i = 0; i < 4; i++){
-		if (roi4point[i].x > xMax)
-			xMax = roi4point[i].x;
-		if (roi4point[i].x < xMin)
-			xMin = roi4point[i].x;
-		if (roi4point[i].y > yMax)
-			yMax = roi4point[i].y;
-		if (roi4point[i].y < yMin)
-			yMin = roi4point[i].y;
-	}
-	int tWidth = xMax - xMin;
-	int tHeight = yMax - yMin;
-	cout << "min_x:" << xMin << " max_x:" << xMax <<
-		"\nmin_y:" << yMin << " max_y:" << yMax <<
-		"\ntargetWidth:" << tWidth << " targetHeight:" << tHeight << endl;
-
-	//user setting position  
-	vector<Point> P2(4);
-	P2[0].x = 0; P2[0].y = 0;
-	P2[1].x = tWidth; P2[1].y = 0;
-	P2[2].x = tWidth; P2[2].y = tHeight;
-	P2[3].x = 0; P2[3].y = tHeight;
-
-	//get homography  
-	Mat trP1, trP2;
-	transpose(P1, trP1);
-	transpose(P2, trP2);
-	Mat H = findHomography(P1, P2);
-	cout << "\nHOMOGRAPHY MATRIX2:" << H.rows << "x" << H.cols << endl << H << endl << endl;
-
-	//warping  
-	Mat output_image = Mat::zeros(Size(tWidth, tHeight), CV_8UC3);
-	warpPerspective(img, output_image, H, Size(output_image.cols, output_image.rows));
-	rectangle(output_image, Point(0, 0), Point(tWidth, tHeight), CV_RGB(255, 0, 0));
-	imshow("output_image", output_image);
-
 	
+	Mat get = img.clone();
+	Mat dst = img.clone();
+
+	vector<vector<Point> > contours;
+	mCorners.clear();
+	int iSliderThres = 80;
+	int iSliderCanny = 80;
+	int iRatio = 3;
+	int iKernelSize = 3;
+	int old1 = 20;
+	int old2 = 30;
+	int biggest_index = 0;
+	namedWindow("SelectCorners",CV_WINDOW_AUTOSIZE);
+	setMouseCallback("SelectCorners", onMouse);
+	//createTrackbar("iSliderThres", "SelectCorners", &iSliderThres, 255);
+	createTrackbar("iSliderCanny", "SelectCorners", &iSliderCanny, 255);
+	while (!isSelected) {
+
+		if (iSliderCanny != old2)
+		{
+			get = img.clone();
+			cout << "changed" << endl;
+			old1 = iSliderThres;
+			old2 = iSliderCanny;
+			dst = Mat::zeros(get.size(), CV_8UC1);
+			cvtColor(get, dst, CV_BGR2GRAY);
+			//threshold(dst, dst, iSliderThres, 200, CV_THRESH_BINARY);	
+			//GaussianBlur(dst, dst, Size(7, 7), 4);
+			blur(dst, dst, Size(3, 3));
+			Canny(dst, dst, iSliderCanny, iSliderCanny*iRatio);
+			/**/
+
+
+			findContours(dst, contours, noArray(), RETR_TREE, CV_CHAIN_APPROX_NONE, Point());
+			int max = 0;
+			int exist = false;
+			for (int i = 0; i < contours.size(); i++) {
+				int temp = contourArea(contours[i], false);
+				if (temp > max) {
+					exist = true;
+					max = temp;
+					biggest_index = i;
+					cout << "b_i"<<biggest_index << endl;
+				}
+			}
+			if (exist)
+			{
+				drawContours(dst, contours, biggest_index, CV_RGB(0, 0, 255), 5);
+			}
+			
+		}
+		for (int i = 0; i < mCorners.size(); i++)
+		{
+			circle(get, mCorners[i], 7, CV_RGB(0, 255, 0), 3);
+		}
+
+		imshow("SelectCorners", dst);
+		int c = waitKey(20);
+		//if (c == 13) {
+		//	break;
+		//}
+	}
+	Point2i newCorners[4];
+	for (int i = 0; i < 4; i++) {
+		newCorners[i] = mCorners[i];
+	}	
+	PointOrderbyCorner(newCorners, img.size().width, img.size().height);
+	for (int i = 0; i < 4; i++) {
+		mCorners[i]= newCorners[i];
+	}
+	printf("points ordered by LT, RT, RB, LB \n");
+	cout << img.size() << endl;
+	cout << contours.size() << endl;
+	cout << mCorners.size() << endl;
+	cout << "biggest_index:"<<biggest_index << endl;
+
+
+	Mat result = divideAndProject(img, contours[biggest_index], mCorners, NUMOFSEGMENTS, NUMOFSEGMENTS);
+	imshow("Result", result);
 	waitKey(0);
 	destroyAllWindows();
 	exit(EXIT_SUCCESS);
 
 }
-void PointOrderbyConner(Point2i* inPoints, int w, int h){
+void PointOrderbyCorner(Point2i* inPoints, int w, int h){
 	vector< pair< float, float> > s_point;
 	for (int i = 0; i< 4; ++i)
 		s_point.push_back(make_pair(inPoints[i].x, inPoints[i].y));
@@ -655,46 +636,42 @@ void PointOrderbyConner(Point2i* inPoints, int w, int h){
 		inPoints[3].y = s_point[2].second;
 	}
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
 static void onMouse(int event, int x, int y, int, void*) {
-	if (event == CV_EVENT_LBUTTONDOWN && oksign == false) {
-		//4 point select  
-		if (roiIndex >= 4) {
-			roiIndex = 0;
-			for (int i = 0; i < 4; ++i)
-				roi4point[i].x = roi4point[i].y = 0;
-		}
-
-		roi4point[roiIndex].x = x;
-		roi4point[roiIndex].y = y;
-
-		//point coordinate print  
-		printf("1:(%.2lf,%.2lf), 2:(%.2lf,%.2lf), 3:(%.2lf,%.2lf), 4:(%.2lf,%.2lf)\n",
-			roi4point[0].x, roi4point[0].y, roi4point[1].x, roi4point[1].y, roi4point[2].x, roi4point[2].y, roi4point[3].x, roi4point[3].y);
-
-		roiIndex++;
+	if (event == CV_EVENT_LBUTTONDOWN) {
+		mCorners.push_back(Point(x, y));
+		cout << "Point:" << x << "," << y << endl;
 	}
 
 	if (event == CV_EVENT_RBUTTONDOWN) {
-		//set point.  
-		if (roiIndex == 4) {
-			oksign = true;
-			printf("Warping \n");
+		if (mCorners.size() == 4) {
+			isSelected = true;
 		}
 	}
+	if (event == CV_EVENT_MBUTTONDOWN) {
+		mCorners.clear();
+		cout << "cleared\n";
+	}
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 vector<Point> DouglasPeucker(vector<Point> &points, double epsilon) {
 	if (points.size() <= 2) {
 		return points;

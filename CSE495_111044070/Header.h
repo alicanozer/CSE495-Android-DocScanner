@@ -15,8 +15,7 @@ using namespace cv;
 using namespace std;
 using namespace xfeatures2d;
 
-#define AUTO_CORNER_DETECTION 0
-#define CORNER_AREA  10
+
 
 Scalar colorTab[] =
 {
@@ -28,11 +27,10 @@ Scalar colorTab[] =
 	Scalar(0,0,0)
 };
 
-vector<Point2i> mCorners;
+vector<Point> mCorners;
 vector<Point2i> mEdges;
 
-int min_thresh = 60;
-int max_thresh = 255;
+
 int row, col;
 RNG rng(12345);
 
@@ -46,13 +44,15 @@ int roiIndex = 0;
 bool oksign = false;
 
 //Point2f MinDistFind(float x, float y, Point2f* inPoints);
-
+void drawPoly(Mat img, vector<Point> vp);
+void drawPoly(Mat img, Point lt, Point rt, Point rb, Point lb);
+vector<Point> fillPoints(vector<Point> src);
 void otoCornerDetect(const Mat& src);
 void checkPoint(int a, int b);
 void select4Corner(const Mat& img);
-void PointOrderbyConner(Point2i* inPoints, int w, int h);
+void PointOrderbyCorner(Point2i* inPoints, int w, int h);
 static void onMouse(int event, int x, int y, int, void*);
-Mat divideAndProject(const Mat img, vector<Point> contour, vector<Point2i> vertices, const int r, const int c);
+Mat divideAndProject(const Mat img, vector<Point> contour, vector<Point> vertices, const int r, const int c);
 
 
 vector<Point> DouglasPeucker(vector<Point> &points, double epsilon);
